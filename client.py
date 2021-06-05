@@ -7,7 +7,7 @@ stats = NTPStats()
 
 with socket.socket() as sock:
     sock.connect(('localhost', 123))
-    sock.send('HLO'.encode())
+    sock.send('.'.encode())
     data = sock.recv(1024)
 
 stats.from_data(data)
