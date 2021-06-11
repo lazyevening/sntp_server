@@ -5,8 +5,8 @@ from ntplib import NTPStats
 
 stats = NTPStats()
 
-with socket.socket() as sock:
-    sock.connect(('localhost', 123))
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+    sock.connect(('127.0.0.1', 123))
     sock.send('.'.encode())
     data = sock.recv(1024)
 

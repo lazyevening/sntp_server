@@ -1,50 +1,62 @@
 import struct
-
-import ntplib
 import socket
 import time
 
-TIME1970 = 2208988800  # UNIX time - NTP time
 
-fake_time_shift = 0
-try:
-    with open('conf.txt') as conf_file:
-        fake_time_shift = int(conf_file.readline())
-except Exception as e:
-    print(f'Произошла ошибка: {e}')
-finally:
-    print(f'Установленное время сдвига: {fake_time_shift} сек.')
+class SNTPPacket:
+    """SNTP packet class"""
 
-ntp = ntplib.NTPClient()
+    _PACKET_FORMAT = '!B B B b 11I'
+    _SNTP_DELTA = 2208988800
 
-sock = socket.socket()
-sock.bind(('', 123))
-sock.listen(1)
+    def __init__(self, delay_seconds=0, mode=4):
+        self.leap = 0
+        self.version = 4
+        self.mode = mode
+        self.stratum = 2
+        self.poll = 10
+        self.precision = 0
+        self.root_delay = 0
+        self.root_dispersion = 0x0aa7
+        self.ref_id = 0x808a8c2c
+        timestamp = time.time() + delay_seconds + SNTPPacket._SNTP_DELTA
+        self.reference_timestamp = timestamp
+        self.originate_timestamp = timestamp
+        self.receive_timestamp = timestamp
+        self.transmit_timestamp = timestamp
+
+    def to_bytes(self):
+        return struct.pack(SNTPPacket._PACKET_FORMAT,
+                           (self.leap << 6 | self.version << 3 | self.mode),
+                           self.stratum,
+                           self.poll,
+                           self.precision,
+                           self.root_delay,
+                           self.root_dispersion,
+                           self.ref_id,
+                           int(self.reference_timestamp),
+                           self._frac(self.reference_timestamp),
+                           int(self.originate_timestamp),
+                           self._frac(self.originate_timestamp),
+                           int(self.receive_timestamp),
+                           self._frac(self.receive_timestamp),
+                           int(self.transmit_timestamp),
+                           self._frac(self.transmit_timestamp))
+
+    @staticmethod
+    def _frac(timestamp):
+        return int(abs(timestamp - int(timestamp)) * 2 ** 32)
 
 
+if __name__ == '__main__':
+    with open('conf.txt') as f:
+        delay_seconds = int(f.read())
 
-while True:
-    conn, addr = sock.accept()
-    print('connected:', addr)
-    data = conn.recv(1024)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(('127.0.0.1', 123))
 
-    if not data:
-        break
-    request = ntp.request('time.windows.com')
-
-    true_time = request.tx_time
-    data = request.to_data()
-    data_bytes = bytearray(data)
-
-    new_time_data = struct.pack('!1I', TIME1970 + int(true_time) + fake_time_shift)
-    new_time_data_bytes = bytearray(new_time_data)
-    print(new_time_data_bytes)
-    data_bytes[40:43] = new_time_data_bytes
-    request.from_data(data_bytes)
-
-    print(f'Время: {time.ctime(true_time)}')
-    print(f'Время с установленным сдвигом: {time.ctime(request.tx_time)}')
-
-    conn.send(data_bytes)
-
-
+    while True:
+        data, addr = sock.recvfrom(1024)
+        print(addr)
+        packet = SNTPPacket(delay_seconds)
+        sock.sendto(packet.to_bytes(), addr)
